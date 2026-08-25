@@ -1,0 +1,8 @@
+.repos/
+.cache/
+.qdrant_storage/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+eval/results/
