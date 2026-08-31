@@ -1,0 +1,287 @@
+{
+  "repo": "https://github.com/sumit-dhandale/OpsSense",
+  "sha": "da938e096ed7",
+  "note": "Gold set pinned to a commit. A chunk matches when its file_path equals `file` and `symbol` equals either its symbol_name or its qualified_name (Class.method). `symbol: null` means any chunk of that file counts, which is how file-level chunking and whole-document markdown are scored. grade 2 = primary, 1 = secondary/acceptable. An empty `gold` marks an unanswerable query: the correct behaviour is abstention.",
+  "queries": [
+    {
+      "id": "q01",
+      "query": "how do I turn a list of strings into embedding vectors",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/embeddings/embedder.py", "symbol": "Embedder.embed_batch", "grade": 2},
+        {"file": "OpsSense/src/embeddings/embedder.py", "symbol": "Embedder.embed", "grade": 1}
+      ]
+    },
+    {
+      "id": "q02",
+      "query": "what is the dimensionality of the embedding model",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/embeddings/embedder.py", "symbol": "Embedder.dim", "grade": 2},
+        {"file": "OpsSense/src/config.py", "symbol": null, "grade": 1}
+      ]
+    },
+    {
+      "id": "q03",
+      "query": "split a document into overlapping windows of text",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/ingestion/chunker.py", "symbol": "chunk_text", "grade": 2},
+        {"file": "OpsSense/src/ingestion/chunker.py", "symbol": "chunk_document", "grade": 1}
+      ]
+    },
+    {
+      "id": "q04",
+      "query": "where is the chunk size and overlap configured",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/config.py", "symbol": null, "grade": 2}
+      ]
+    },
+    {
+      "id": "q05",
+      "query": "read the incident markdown files off disk",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/ingestion/loader.py", "symbol": "load_documents", "grade": 2},
+        {"file": "OpsSense/src/ingestion/loader.py", "symbol": "parse_markdown", "grade": 1}
+      ]
+    },
+    {
+      "id": "q06",
+      "query": "extract the title, date and severity headers from a doc",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/ingestion/loader.py", "symbol": "parse_markdown", "grade": 2}
+      ]
+    },
+    {
+      "id": "q07",
+      "query": "clean up inconsistent service names before storing them",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/ingestion/loader.py", "symbol": "normalize_service", "grade": 2}
+      ]
+    },
+    {
+      "id": "q08",
+      "query": "write vectors into the vector database in batches",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/ingestion/indexer.py", "symbol": "index_chunks", "grade": 2},
+        {"file": "OpsSense/src/ingestion/indexer.py", "symbol": "index_documents", "grade": 1}
+      ]
+    },
+    {
+      "id": "q09",
+      "query": "how are point ids generated so re-indexing does not duplicate rows",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/ingestion/indexer.py", "symbol": "_point_id", "grade": 2}
+      ]
+    },
+    {
+      "id": "q10",
+      "query": "create the collection if it does not already exist",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/qdrant_store.py", "symbol": "ensure_collection", "grade": 2}
+      ]
+    },
+    {
+      "id": "q11",
+      "query": "connect to the qdrant server",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/qdrant_store.py", "symbol": "get_client", "grade": 2},
+        {"file": "OpsSense/src/config.py", "symbol": null, "grade": 1}
+      ]
+    },
+    {
+      "id": "q12",
+      "query": "how many points are currently stored",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/qdrant_store.py", "symbol": "collection_info", "grade": 2}
+      ]
+    },
+    {
+      "id": "q13",
+      "query": "restrict search results to one service and severity",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/retrieval/vector_search.py", "symbol": "payload_filter", "grade": 2},
+        {"file": "OpsSense/src/retrieval/vector_search.py", "symbol": "search", "grade": 1}
+      ]
+    },
+    {
+      "id": "q14",
+      "query": "run a nearest neighbour query and return the top hits",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/retrieval/vector_search.py", "symbol": "search", "grade": 2}
+      ]
+    },
+    {
+      "id": "q15",
+      "query": "measure what fraction of the relevant documents we retrieved",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/eval/metrics.py", "symbol": "recall_at_k", "grade": 2},
+        {"file": "OpsSense/src/eval/metrics.py", "symbol": "mean_recall", "grade": 1}
+      ]
+    },
+    {
+      "id": "q16",
+      "query": "collapse several chunks of the same incident into one result",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/src/eval/metrics.py", "symbol": "unique_incident_ids", "grade": 2}
+      ]
+    },
+    {
+      "id": "q17",
+      "query": "compare two chunk sizes and report which retrieves better",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/scripts/eval_chunking.py", "symbol": "run_chunk_eval", "grade": 2},
+        {"file": "OpsSense/scripts/eval_chunking.py", "symbol": "main", "grade": 1}
+      ]
+    },
+    {
+      "id": "q18",
+      "query": "cosine similarity between two vectors",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/scripts/embedding_similarity.py", "symbol": "cosine", "grade": 2},
+        {"file": "OpsSense/tests/test_embedder.py", "symbol": "cosine", "grade": 1}
+      ]
+    },
+    {
+      "id": "q19",
+      "query": "command line entry point for searching from the terminal",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/scripts/search.py", "symbol": "main", "grade": 2}
+      ]
+    },
+    {
+      "id": "q20",
+      "query": "test that a metadata filter actually narrows the results",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/tests/test_vector_search.py", "symbol": "test_metadata_filter_narrows_service_and_severity", "grade": 2}
+      ]
+    },
+    {
+      "id": "q21",
+      "query": "test that semantic search beats keyword matching",
+      "kind": "code",
+      "gold": [
+        {"file": "OpsSense/tests/test_embedder.py", "symbol": "test_semantic_vs_keyword", "grade": 2}
+      ]
+    },
+    {
+      "id": "q22",
+      "query": "how do I run the project end to end",
+      "kind": "docs",
+      "gold": [
+        {"file": "OpsSense/README.md", "symbol": "Setup and test", "grade": 2},
+        {"file": "README.md", "symbol": null, "grade": 1}
+      ]
+    },
+    {
+      "id": "q23",
+      "query": "we ran out of database connections under load",
+      "kind": "lexical-gap",
+      "note": "docs say 'pool exhaustion' / 'MaxTotal', query says 'ran out of connections'",
+      "gold": [
+        {"file": "OpsSense/data/incidents/incident_006.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_001.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_005.md", "symbol": null, "grade": 1},
+        {"file": "OpsSense/data/incidents/incident_015.md", "symbol": null, "grade": 1}
+      ]
+    },
+    {
+      "id": "q24",
+      "query": "requests timed out talking to another service",
+      "kind": "lexical-gap",
+      "note": "docs say 'deadline exceeded' rather than 'timed out'",
+      "gold": [
+        {"file": "OpsSense/data/incidents/incident_010.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_003.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_011.md", "symbol": null, "grade": 1},
+        {"file": "OpsSense/data/incidents/incident_014.md", "symbol": null, "grade": 1}
+      ]
+    },
+    {
+      "id": "q25",
+      "query": "one record was hammered far more than the rest",
+      "kind": "lexical-gap",
+      "note": "docs say 'hot key' / 'read amplification on a single partition'",
+      "gold": [
+        {"file": "OpsSense/data/incidents/incident_017.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_002.md", "symbol": null, "grade": 2}
+      ]
+    },
+    {
+      "id": "q26",
+      "query": "the service kept running out of RAM",
+      "kind": "lexical-gap",
+      "note": "docs say 'memory pressure', never 'RAM'",
+      "gold": [
+        {"file": "OpsSense/data/incidents/incident_013.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_018.md", "symbol": null, "grade": 2}
+      ]
+    },
+    {
+      "id": "q27",
+      "query": "queue processing fell behind and workers kept getting kicked out of the group",
+      "kind": "lexical-gap",
+      "note": "docs say 'consumer lag' and 'rebalance storm'",
+      "gold": [
+        {"file": "OpsSense/data/incidents/incident_009.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_008.md", "symbol": null, "grade": 1}
+      ]
+    },
+    {
+      "id": "q28",
+      "query": "slowness caused by the network path rather than by the datastore itself",
+      "kind": "lexical-gap",
+      "gold": [
+        {"file": "OpsSense/data/incidents/incident_014.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_019.md", "symbol": null, "grade": 2},
+        {"file": "OpsSense/data/incidents/incident_011.md", "symbol": null, "grade": 1},
+        {"file": "OpsSense/data/incidents/incident_010.md", "symbol": null, "grade": 1}
+      ]
+    },
+    {
+      "id": "q29",
+      "query": "how does the cross-encoder reranker score candidates",
+      "kind": "unanswerable",
+      "note": "OpsSense has no reranker; lexically close to its retrieval code",
+      "gold": []
+    },
+    {
+      "id": "q30",
+      "query": "where do we validate the JWT on an incoming request",
+      "kind": "unanswerable",
+      "note": "no auth anywhere in the repo",
+      "gold": []
+    },
+    {
+      "id": "q31",
+      "query": "kubernetes deployment manifest for the api",
+      "kind": "unanswerable",
+      "note": "src/api/ is an empty package; no manifests exist",
+      "gold": []
+    },
+    {
+      "id": "q32",
+      "query": "incident where TLS certificates expired",
+      "kind": "unanswerable",
+      "note": "no cert incident; every doc is a latency/timeout story, so vector search will happily return one",
+      "gold": []
+    }
+  ]
+}

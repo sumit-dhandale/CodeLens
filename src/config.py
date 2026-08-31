@@ -56,6 +56,8 @@ IGNORE_FILES = frozenset(
 # Substrings marking a file as generated/minified.
 IGNORE_SUFFIXES = (".min.js", ".min.css", ".bundle.js", "_pb2.py", ".g.dart")
 
+CHUNK_STRATEGIES = ("file", "class", "function", "fixed")
+
 
 @dataclass
 class Config:
@@ -98,9 +100,20 @@ class Config:
     def field_names(cls) -> set[str]:
         return {f.name for f in dataclasses.fields(cls)}
 
-    def override(self, **kwargs) -> "Config":
+    def override(self, **kwargs) -> Config:
         """Return a copy with non-None kwargs applied. Unknown keys are ignored
         so the CLI can pass its whole namespace through."""
         known = self.field_names()
         updates = {k: v for k, v in kwargs.items() if k in known and v is not None}
         return dataclasses.replace(self, **updates)
+
+    def validate(self) -> None:
+        if self.strategy not in CHUNK_STRATEGIES:
+            raise ValueError(
+                f"unknown strategy {self.strategy!r}, expected one of {CHUNK_STRATEGIES}"
+            )
+        if self.chunk_lines < 1 or not 0 <= self.chunk_overlap < self.chunk_lines:
+            raise ValueError(
+                f"need chunk_lines >= 1 and 0 <= chunk_overlap < chunk_lines, "
+                f"got {self.chunk_lines}/{self.chunk_overlap}"
+            )

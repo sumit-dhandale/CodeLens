@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import order, UP pyupgrade, B bugbear,
+# SIM simplify, RUF ruff-specific, S bandit (security), PTH prefer pathlib.
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF", "S", "PTH"]
+ignore = [
+    "E501",    # line length is formatter's job, not a hard error
+    "S101",    # asserts are the point in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+# subprocess with a fixed argv and validated args is the safe form we already use.
+"src/parser/repo_fetcher.py" = ["S603", "S607"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -m 'not slow'"
+markers = [
+    "slow: performance regression checks (run with pytest -m slow)",
+]

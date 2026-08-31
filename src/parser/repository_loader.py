@@ -31,9 +31,7 @@ def discover(root: Path, cfg: Config) -> list[Path]:
     root = root.resolve()
     found: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(
-            d for d in dirnames if d not in IGNORE_DIRS and not d.startswith(".")
-        )
+        dirnames[:] = sorted(d for d in dirnames if d not in IGNORE_DIRS and not d.startswith("."))
         for filename in sorted(filenames):
             if filename.startswith(".") or _is_ignored_name(filename):
                 continue
