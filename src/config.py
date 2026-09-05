@@ -83,6 +83,9 @@ class Config:
     qdrant_url: str = "http://localhost:6333"
     collection_suffix: str = ""
 
+    # eval
+    gold_set: Path = ROOT / "eval" / "opssense.json"
+
     # retrieval
     top_k: int = 5
     rerank_top_n: int = 20

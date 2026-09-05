@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import collections
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -12,9 +13,15 @@ from pathlib import Path
 from .chunking import code_chunker
 from .config import Config
 from .embeddings.embedder import Embedder
+from .eval import gold as gold_mod
+from .eval import metrics, runner
 from .parser import code_parser, repo_fetcher, repository_loader
 from .retrieval.vector_search import VectorSearcher
 from .vector_store import qdrant_store
+
+# A long flag inside the query text. Only `--word`, so "well-known" and "-1"
+# stay searchable.
+FLAG_IN_QUERY = r"(?:^|\s)(--[a-z][a-z-]+)"
 
 
 def _resolve_checkout(cfg: Config) -> repo_fetcher.Checkout:
@@ -129,13 +136,20 @@ def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
+    # argparse treats a token containing a space as positional even when it
+    # starts with a dash, so a quoting mistake turns "--language python" into
+    # part of the query and silently returns plausible nonsense.
+    query = " ".join(args.query)
+    if flag := re.search(FLAG_IN_QUERY, query):
+        raise ValueError(
+            f"query contains what looks like a flag: {flag.group(1)!r} - check quoting"
+        )
+
     searcher = VectorSearcher(cfg)
     query_filter = qdrant_store.make_filter(
         language=args.language, symbol_type=args.symbol_type, directory=args.directory
     )
-    result = searcher.search(
-        " ".join(args.query), top_k=cfg.top_k, query_filter=query_filter, exact=args.exact
-    )
+    result = searcher.search(query, top_k=cfg.top_k, query_filter=query_filter, exact=args.exact)
     if not result.hits:
         print("no results")
     for rank, hit in enumerate(result.hits, 1):
@@ -148,6 +162,41 @@ def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
         f"(embed {result.embed_ms:.0f}ms, {mode} search {result.search_ms:.0f}ms)"
     )
     searcher.embedder.close()
+    return 0
+
+
+def cmd_eval(cfg: Config, args: argparse.Namespace) -> int:
+    root = Path(args.path).resolve() if args.path else _resolve_checkout(cfg).path
+    files = repository_loader.load(root, cfg)
+    harness = runner.Harness.build(cfg, files)
+
+    names = [n.strip() for n in args.retrievers.split(",") if n.strip()]
+    if any(n.startswith("vector") or n.startswith("hybrid") for n in names):
+        harness.store = qdrant_store.QdrantStore(cfg)
+        harness.embedder = Embedder(cfg)
+        if not harness.store.exists():
+            raise RuntimeError(
+                f"collection {harness.store.collection!r} missing; run `index` first"
+            )
+
+    gold = gold_mod.load_gold(Path(args.gold) if args.gold else cfg.gold_set)
+    summaries = runner.evaluate(
+        harness,
+        gold,
+        names,
+        top_k=cfg.top_k,
+        threshold=args.threshold,
+        dump_dir=None if args.no_dump else runner.RESULTS_DIR,
+    )
+
+    print(f"{harness.cfg.strategy} strategy, {len(harness.chunks)} chunks, k={cfg.top_k}\n")
+    print(metrics.Summary.HEADER)
+    for summary in summaries:
+        print(summary.row())
+    if not args.no_dump:
+        print(f"\nper-query results in {runner.RESULTS_DIR}")
+    if harness.embedder is not None:
+        harness.embedder.close()
     return 0
 
 
@@ -166,6 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--qdrant-url", dest="qdrant_url", help="http url, or :memory: for local")
     common.add_argument("--collection-suffix", dest="collection_suffix")
     common.add_argument("--top-k", type=int, dest="top_k")
+    common.add_argument(
+        "--vector-weight",
+        type=float,
+        dest="vector_weight",
+        help="vector share in hybrid_weighted fusion (0-1)",
+    )
 
     parser = argparse.ArgumentParser(prog="python -m src.cli", parents=[common])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -219,6 +274,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     search_cmd.add_argument("--snippet", type=int, default=3, help="lines of source per hit")
     search_cmd.set_defaults(func=cmd_search)
+
+    eval_cmd = sub.add_parser(
+        "eval", parents=[common], help="score every retriever against the gold set"
+    )
+    eval_cmd.add_argument("--path", help="evaluate a local directory instead of a checkout")
+    eval_cmd.add_argument("--gold", help="path to a gold set json")
+    # Named --retrievers, not --strategies: --strategy already means the
+    # chunking strategy everywhere else in this CLI.
+    eval_cmd.add_argument(
+        "--retrievers",
+        default=",".join(runner.RETRIEVERS),
+        help=f"comma-separated subset of {','.join(runner.RETRIEVERS)}",
+    )
+    eval_cmd.add_argument(
+        "--threshold",
+        type=float,
+        default=0.30,
+        help="score above which an answer counts as confident, for false-confidence",
+    )
+    eval_cmd.add_argument("--no-dump", action="store_true", help="skip writing eval/results/*.json")
+    eval_cmd.set_defaults(func=cmd_eval)
 
     return parser
 

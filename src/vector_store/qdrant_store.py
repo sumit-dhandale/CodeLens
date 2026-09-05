@@ -127,6 +127,22 @@ class Hit:
     end_line: int
     text: str
 
+    @classmethod
+    def from_chunk(cls, chunk: Chunk, score: float) -> Hit:
+        """Lets keyword and vector retrievers return the same type, so fusion
+        can treat them interchangeably and `citation` is a usable join key."""
+        return cls(
+            score=score,
+            file_path=chunk.file_path,
+            language=chunk.language,
+            symbol_type=chunk.symbol_type,
+            symbol_name=chunk.symbol_name,
+            class_name=chunk.class_name,
+            start_line=chunk.start_line,
+            end_line=chunk.end_line,
+            text=chunk.text,
+        )
+
     @property
     def citation(self) -> str:
         return f"{self.file_path}:{self.start_line}-{self.end_line}"
