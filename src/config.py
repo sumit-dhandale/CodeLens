@@ -77,7 +77,7 @@ class Config:
     # embeddings
     model: str = "sentence-transformers/all-MiniLM-L6-v2"
     batch_size: int = 32
-    cache_db: Path = ROOT / ".cache" / "embeddings.sqlite3"
+    cache_db: Path | None = ROOT / ".cache" / "embeddings.sqlite3"  # None -> in-memory
 
     # vector store
     qdrant_url: str = "http://localhost:6333"

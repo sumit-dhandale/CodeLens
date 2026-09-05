@@ -6,11 +6,15 @@ import argparse
 import collections
 import logging
 import sys
+import time
 from pathlib import Path
 
 from .chunking import code_chunker
 from .config import Config
+from .embeddings.embedder import Embedder
 from .parser import code_parser, repo_fetcher, repository_loader
+from .retrieval.vector_search import VectorSearcher
+from .vector_store import qdrant_store
 
 
 def _resolve_checkout(cfg: Config) -> repo_fetcher.Checkout:
@@ -100,6 +104,53 @@ def cmd_chunk(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
+    root = Path(args.path).resolve() if args.path else _resolve_checkout(cfg).path
+    files = repository_loader.load(root, cfg)
+    chunks = code_chunker.chunk(files, cfg, cfg.strategy)
+
+    embedder = Embedder(cfg)
+    store = qdrant_store.QdrantStore(cfg)
+    if args.drop and store.drop():
+        print(f"dropped {store.collection}")
+
+    started = time.perf_counter()
+    # No dim is passed: sync takes it from the vectors, so a fully-cached
+    # reindex never imports torch at all.
+    report = store.sync(chunks, embedder.embed_batch)
+    print(report)
+    print(
+        f"  embedded:  {embedder.encoded_count} (cache {embedder.cache.hits} hit / "
+        f"{embedder.cache.misses} miss)\n"
+        f"  elapsed:   {time.perf_counter() - started:.1f}s"
+    )
+    embedder.close()
+    return 0
+
+
+def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
+    searcher = VectorSearcher(cfg)
+    query_filter = qdrant_store.make_filter(
+        language=args.language, symbol_type=args.symbol_type, directory=args.directory
+    )
+    result = searcher.search(
+        " ".join(args.query), top_k=cfg.top_k, query_filter=query_filter, exact=args.exact
+    )
+    if not result.hits:
+        print("no results")
+    for rank, hit in enumerate(result.hits, 1):
+        print(f"{rank:2d}. {hit.score:.4f}  {hit.citation}  {hit.symbol_type} {hit.qualified_name}")
+        for line in hit.snippet(args.snippet).splitlines():
+            print(f"      {line}")
+    mode = "exact" if result.exact else "hnsw"
+    print(
+        f"\n{len(result.hits)} hits in {result.total_ms:.0f}ms "
+        f"(embed {result.embed_ms:.0f}ms, {mode} search {result.search_ms:.0f}ms)"
+    )
+    searcher.embedder.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Shared as a parent so every flag works both before and after the subcommand.
     # SUPPRESS keeps the subparser from overwriting a flag given before the subcommand.
@@ -110,6 +161,11 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--strategy", choices=code_chunker.STRATEGIES)
     common.add_argument("--chunk-lines", type=int, dest="chunk_lines")
     common.add_argument("--chunk-overlap", type=int, dest="chunk_overlap")
+    common.add_argument("--model", help="sentence-transformers model name")
+    common.add_argument("--batch-size", type=int, dest="batch_size")
+    common.add_argument("--qdrant-url", dest="qdrant_url", help="http url, or :memory: for local")
+    common.add_argument("--collection-suffix", dest="collection_suffix")
+    common.add_argument("--top-k", type=int, dest="top_k")
 
     parser = argparse.ArgumentParser(prog="python -m src.cli", parents=[common])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -141,6 +197,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="HF model for exact token counts (default: embedding model from config)",
     )
     chunk_cmd.set_defaults(func=cmd_chunk)
+
+    index_cmd = sub.add_parser(
+        "index", parents=[common], help="embed chunks and sync them into Qdrant"
+    )
+    index_cmd.add_argument("--path", help="index a local directory instead of a checkout")
+    index_cmd.add_argument(
+        "--drop", action="store_true", help="delete the collection first instead of syncing"
+    )
+    index_cmd.set_defaults(func=cmd_index)
+
+    search_cmd = sub.add_parser("search", parents=[common], help="vector search the index")
+    search_cmd.add_argument("query", nargs="+")
+    search_cmd.add_argument("--language", help="filter: python, markdown, ...")
+    search_cmd.add_argument(
+        "--symbol-type", dest="symbol_type", help="filter: function, class, ..."
+    )
+    search_cmd.add_argument("--directory", help="filter: exact directory of the chunk's file")
+    search_cmd.add_argument(
+        "--exact", action="store_true", help="brute-force search, the ANN recall baseline"
+    )
+    search_cmd.add_argument("--snippet", type=int, default=3, help="lines of source per hit")
+    search_cmd.set_defaults(func=cmd_search)
 
     return parser
 
