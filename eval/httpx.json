@@ -1,0 +1,172 @@
+{
+ "repo": "https://github.com/encode/httpx",
+ "sha": "b5addb64f016",
+ "note": "PROVISIONAL - written by the agent from the parsed symbol list and not yet reviewed by a human, unlike eval/opssense.json. Exists to give the experiments a second, 17x larger corpus (1465 function chunks vs 85) so that differences measured on OpsSense can be checked for noise. Same schema: grade 2 = primary, 1 = acceptable neighbour, empty `gold` = unanswerable.",
+ "queries": [
+  {
+   "id": "h01",
+   "query": "how does the client follow a redirect response",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "Client._send_handling_redirects", "grade": 2},
+    {"file": "httpx/_client.py", "symbol": "BaseClient._build_redirect_request", "grade": 1}
+   ]
+  },
+  {
+   "id": "h02",
+   "query": "where is the basic authentication header built",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_auth.py", "symbol": "BasicAuth._build_auth_header", "grade": 2},
+    {"file": "httpx/_auth.py", "symbol": "BasicAuth.auth_flow", "grade": 1}
+   ]
+  },
+  {
+   "id": "h03",
+   "query": "limit the number of connections kept in the pool",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_config.py", "symbol": "Limits.__init__", "grade": 2},
+    {"file": "httpx/_config.py", "symbol": "Limits.__repr__", "grade": 1}
+   ]
+  },
+  {
+   "id": "h04",
+   "query": "set how long to wait before giving up on a slow server",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_config.py", "symbol": "Timeout.__init__", "grade": 2},
+    {"file": "httpx/_config.py", "symbol": "Timeout.as_dict", "grade": 1}
+   ]
+  },
+  {
+   "id": "h05",
+   "query": "create an ssl context for secure connections",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_config.py", "symbol": "create_ssl_context", "grade": 2}
+   ]
+  },
+  {
+   "id": "h06",
+   "query": "serialise a python dictionary as a json request body",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_content.py", "symbol": "encode_json", "grade": 2},
+    {"file": "httpx/_content.py", "symbol": "encode_request", "grade": 1}
+   ]
+  },
+  {
+   "id": "h07",
+   "query": "upload a file as part of a form submission",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_content.py", "symbol": "encode_multipart_data", "grade": 2},
+    {"file": "httpx/_multipart.py", "symbol": "FileField.__init__", "grade": 1},
+    {"file": "httpx/_multipart.py", "symbol": "MultipartStream.__init__", "grade": 1}
+   ]
+  },
+  {
+   "id": "h08",
+   "query": "what separates the parts of a multipart body",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_multipart.py", "symbol": "get_multipart_boundary_from_content_type", "grade": 2}
+   ]
+  },
+  {
+   "id": "h09",
+   "query": "parse the challenge sent back by a server asking for digest auth",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_auth.py", "symbol": "DigestAuth._parse_challenge", "grade": 2},
+    {"file": "httpx/_auth.py", "symbol": "DigestAuth.auth_flow", "grade": 1}
+   ]
+  },
+  {
+   "id": "h10",
+   "query": "check whether two urls point at the same host and port",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "_same_origin", "grade": 2},
+    {"file": "httpx/_client.py", "symbol": "_port_or_default", "grade": 1}
+   ]
+  },
+  {
+   "id": "h11",
+   "query": "combine a relative path with the configured base url",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "BaseClient._merge_url", "grade": 2},
+    {"file": "httpx/_client.py", "symbol": "BaseClient._enforce_trailing_slash", "grade": 1}
+   ]
+  },
+  {
+   "id": "h12",
+   "query": "actually hand the request to the transport layer",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "Client._send_single_request", "grade": 2},
+    {"file": "httpx/_client.py", "symbol": "Client._transport_for_url", "grade": 1}
+   ]
+  },
+  {
+   "id": "h13",
+   "query": "try the request again after the server rejects the credentials",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "Client._send_handling_auth", "grade": 2},
+    {"file": "httpx/_auth.py", "symbol": "Auth.sync_auth_flow", "grade": 1}
+   ]
+  },
+  {
+   "id": "h14",
+   "query": "does a post become a get when the server redirects",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "BaseClient._redirect_method", "grade": 2}
+   ]
+  },
+  {
+   "id": "h15",
+   "query": "drop sensitive headers when redirected to a different domain",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "BaseClient._redirect_headers", "grade": 2},
+    {"file": "httpx/_client.py", "symbol": "_is_https_redirect", "grade": 1}
+   ]
+  },
+  {
+   "id": "h16",
+   "query": "read proxy settings out of the environment",
+   "kind": "code",
+   "gold": [
+    {"file": "httpx/_client.py", "symbol": "BaseClient._get_proxy_map", "grade": 2}
+   ]
+  },
+  {
+   "id": "h17",
+   "query": "how do we open a connection to a postgres database",
+   "kind": "unanswerable",
+   "gold": []
+  },
+  {
+   "id": "h18",
+   "query": "configure horizontal pod autoscaling in kubernetes",
+   "kind": "unanswerable",
+   "gold": []
+  },
+  {
+   "id": "h19",
+   "query": "train a machine learning model on the request logs",
+   "kind": "unanswerable",
+   "gold": []
+  },
+  {
+   "id": "h20",
+   "query": "render an html dashboard template for the admin page",
+   "kind": "unanswerable",
+   "gold": []
+  }
+ ]
+}

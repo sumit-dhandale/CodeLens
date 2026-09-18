@@ -16,6 +16,8 @@ from .embeddings.embedder import Embedder
 from .eval import gold as gold_mod
 from .eval import metrics, runner
 from .parser import code_parser, repo_fetcher, repository_loader
+from .retrieval import context as context_mod
+from .retrieval.reranker import CrossEncoderReranker
 from .retrieval.vector_search import VectorSearcher
 from .vector_store import qdrant_store
 
@@ -149,17 +151,42 @@ def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
     query_filter = qdrant_store.make_filter(
         language=args.language, symbol_type=args.symbol_type, directory=args.directory
     )
-    result = searcher.search(query, top_k=cfg.top_k, query_filter=query_filter, exact=args.exact)
-    if not result.hits:
+    # Reranking and MMR both need a candidate pool deeper than what we show.
+    two_stage = args.rerank or args.mmr
+    result = searcher.search(
+        query,
+        top_k=cfg.rerank_top_n if two_stage else cfg.top_k,
+        query_filter=query_filter,
+        exact=args.exact,
+        with_vectors=args.mmr,
+    )
+
+    hits, extra = result.hits, ""
+    if args.mmr:
+        hits = context_mod.mmr(hits, cfg.mmr_lambda, cfg.top_k)
+        extra += f", mmr lambda={cfg.mmr_lambda}"
+    if args.rerank:
+        started = time.perf_counter()
+        hits = CrossEncoderReranker(cfg).rerank(query, hits, cfg.top_k)
+        extra += f", rerank {(time.perf_counter() - started) * 1000:.0f}ms of {len(result.hits)}"
+    hits = hits[: cfg.top_k]
+
+    expander = (
+        context_mod.ContextExpander(repository_loader.load(_resolve_checkout(cfg).path, cfg))
+        if args.expand
+        else None
+    )
+    if not hits:
         print("no results")
-    for rank, hit in enumerate(result.hits, 1):
+    for rank, hit in enumerate(hits, 1):
         print(f"{rank:2d}. {hit.score:.4f}  {hit.citation}  {hit.symbol_type} {hit.qualified_name}")
-        for line in hit.snippet(args.snippet).splitlines():
+        body = expander.expand(hit).text if expander else hit.snippet(args.snippet)
+        for line in body.splitlines():
             print(f"      {line}")
     mode = "exact" if result.exact else "hnsw"
     print(
-        f"\n{len(result.hits)} hits in {result.total_ms:.0f}ms "
-        f"(embed {result.embed_ms:.0f}ms, {mode} search {result.search_ms:.0f}ms)"
+        f"\n{len(hits)} hits in {result.total_ms:.0f}ms "
+        f"(embed {result.embed_ms:.0f}ms, {mode} search {result.search_ms:.0f}ms{extra})"
     )
     searcher.embedder.close()
     return 0
@@ -171,13 +198,15 @@ def cmd_eval(cfg: Config, args: argparse.Namespace) -> int:
     harness = runner.Harness.build(cfg, files)
 
     names = [n.strip() for n in args.retrievers.split(",") if n.strip()]
-    if any(n.startswith("vector") or n.startswith("hybrid") for n in names):
+    if any(n.startswith(("vector", "hybrid")) for n in names):
         harness.store = qdrant_store.QdrantStore(cfg)
         harness.embedder = Embedder(cfg)
         if not harness.store.exists():
             raise RuntimeError(
                 f"collection {harness.store.collection!r} missing; run `index` first"
             )
+    if any(n.endswith("rerank") for n in names):
+        harness.reranker = CrossEncoderReranker(cfg)
 
     gold = gold_mod.load_gold(Path(args.gold) if args.gold else cfg.gold_set)
     summaries = runner.evaluate(
@@ -273,6 +302,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--exact", action="store_true", help="brute-force search, the ANN recall baseline"
     )
     search_cmd.add_argument("--snippet", type=int, default=3, help="lines of source per hit")
+    search_cmd.add_argument(
+        "--rerank", action="store_true", help=f"cross-encode the top {Config.rerank_top_n}"
+    )
+    search_cmd.add_argument("--mmr", action="store_true", help="diversify with MMR")
+    search_cmd.add_argument(
+        "--expand", action="store_true", help="show imports and parent class with each hit"
+    )
     search_cmd.set_defaults(func=cmd_search)
 
     eval_cmd = sub.add_parser(

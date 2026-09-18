@@ -1,4 +1,4 @@
-"""Guards the gold set against rot: every label must name a chunk that exists."""
+"""Guards the gold sets against rot: every label must name a chunk that exists."""
 
 import pytest
 
@@ -7,35 +7,53 @@ from src.config import ROOT, Config
 from src.eval.gold import build_name_index, load_gold
 from src.parser import repository_loader
 
-GOLD = ROOT / "eval" / "opssense.json"
+GOLD_SETS = {
+    "opssense": ROOT / "eval" / "opssense.json",
+    "httpx": ROOT / "eval" / "httpx.json",
+}
 
 
 @pytest.fixture(scope="module")
-def corpus():
-    cfg = Config()
-    checkouts = sorted(cfg.repos_dir.glob("*OpsSense@*"))
-    if not checkouts:
-        pytest.skip("no OpsSense checkout; run `python -m src.cli fetch` first")
-    checkout = checkouts[0]
-    files = repository_loader.load(checkout, cfg)
-    names: set[tuple[str, str]] = set()
-    for strategy in ("file", "class", "function"):
-        names |= build_name_index(code_chunker.chunk(files, cfg, strategy))
-    return checkout.name.split("@", 1)[1], {f.file_path for f in files}, names
+def corpora():
+    """Chunk each labelled repo once, under every strategy a label could target."""
+    out = {}
+    for name, path in GOLD_SETS.items():
+        gold = load_gold(path)
+        cfg = Config(repo=gold["repo"])
+        owner, repo_name = gold["repo"].rstrip("/").split("/")[-2:]
+        checkouts = sorted(cfg.repos_dir.glob(f"{owner}__{repo_name}@*"))
+        if not checkouts:
+            continue
+        files = repository_loader.load(checkouts[0], cfg)
+        names: set[tuple[str, str]] = set()
+        for strategy in ("file", "class", "function"):
+            names |= build_name_index(code_chunker.chunk(files, cfg, strategy))
+        out[name] = (
+            checkouts[0].name.split("@", 1)[1],
+            gold,
+            {f.file_path for f in files},
+            names,
+        )
+    return out
 
 
-def test_gold_sha_matches_checkout(corpus):
-    checkout_sha, _, _ = corpus
-    gold = load_gold(GOLD)
-    pinned = gold["sha"]
-    assert checkout_sha.startswith(pinned), (
-        f"gold set pinned to {pinned}, checkout is {checkout_sha} — re-label or re-fetch"
+def _corpus(corpora, name):
+    if name not in corpora:
+        pytest.skip(f"no {name} checkout; run `python -m src.cli fetch --repo ...` first")
+    return corpora[name]
+
+
+@pytest.mark.parametrize("name", list(GOLD_SETS))
+def test_gold_sha_matches_checkout(corpora, name):
+    checkout_sha, gold, _, _ = _corpus(corpora, name)
+    assert checkout_sha.startswith(gold["sha"]), (
+        f"{name} gold set pinned to {gold['sha']}, checkout is {checkout_sha} - re-label or re-fetch"
     )
 
 
-def test_every_gold_label_resolves(corpus):
-    _, paths, names = corpus
-    gold = load_gold(GOLD)
+@pytest.mark.parametrize("name", list(GOLD_SETS))
+def test_every_gold_label_resolves(corpora, name):
+    _, gold, paths, names = _corpus(corpora, name)
     missing = [
         (q["id"], g)
         for q in gold["queries"]
@@ -45,11 +63,17 @@ def test_every_gold_label_resolves(corpus):
     assert not missing
 
 
-def test_gold_set_shape():
-    gold = load_gold(GOLD)
+@pytest.mark.parametrize("name", list(GOLD_SETS))
+def test_gold_set_shape(corpora, name):
+    _, gold, _, _ = _corpus(corpora, name)
     queries = gold["queries"]
     assert len({q["id"] for q in queries}) == len(queries)
     assert sum(1 for q in queries if q["kind"] == "unanswerable") >= 4
-    assert sum(1 for q in queries if q["kind"] == "lexical-gap") >= 5
     assert all(q["gold"] or q["kind"] == "unanswerable" for q in queries)
     assert all(g["grade"] in (1, 2) for q in queries for g in q["gold"])
+
+
+def test_opssense_covers_the_query_kinds_it_was_designed_for(corpora):
+    _, gold, _, _ = _corpus(corpora, "opssense")
+    kinds = [q["kind"] for q in gold["queries"]]
+    assert sum(1 for k in kinds if k == "lexical-gap") >= 5

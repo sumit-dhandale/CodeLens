@@ -42,6 +42,7 @@ class VectorSearcher:
         top_k: int | None = None,
         query_filter: Any = None,
         exact: bool = False,
+        with_vectors: bool = False,
     ) -> SearchResult:
         if not query.strip():
             raise ValueError("empty query")
@@ -56,7 +57,11 @@ class VectorSearcher:
         vector = self.embedder.embed(query)
         embedded = time.perf_counter()
         hits = self.store.search(
-            vector, top_k=top_k or self.cfg.top_k, query_filter=query_filter, exact=exact
+            vector,
+            top_k=top_k or self.cfg.top_k,
+            query_filter=query_filter,
+            exact=exact,
+            with_vectors=with_vectors,
         )
         done = time.perf_counter()
         return SearchResult(

@@ -20,12 +20,24 @@ from ..chunking.code_chunker import Chunk
 from ..config import ROOT, Config
 from ..embeddings.embedder import Embedder
 from ..parser.repository_loader import SourceFile
-from ..retrieval import fusion, keyword_search
+from ..retrieval import context, fusion, keyword_search
+from ..retrieval.reranker import CrossEncoderReranker
 from ..vector_store.qdrant_store import Hit, QdrantStore
 from .gold import chunk_matches
 from .metrics import QueryScore, Summary, summarize
 
-RETRIEVERS = ("random", "grep", "bm25", "vector", "hybrid_weighted", "hybrid_rrf")
+RETRIEVERS = (
+    "random",
+    "grep",
+    "bm25",
+    "vector",
+    "hybrid_weighted",
+    "hybrid_rrf",
+    "vector_rerank",
+    "hybrid_rrf_rerank",
+    "vector_mmr",
+    "vector_cap",
+)
 
 RESULTS_DIR = ROOT / "eval" / "results"
 
@@ -40,6 +52,7 @@ class Harness:
     chunks: list[Chunk]
     store: QdrantStore | None = None
     embedder: Embedder | None = None
+    reranker: CrossEncoderReranker | None = None
 
     @classmethod
     def build(cls, cfg: Config, files: list[SourceFile]) -> Harness:
@@ -54,10 +67,15 @@ class Harness:
             self._bm25 = keyword_search.BM25Index(self.chunks)
         return self._bm25
 
-    def _vector(self, query: str, top_k: int) -> list[Hit]:
+    def _vector(self, query: str, top_k: int, with_vectors: bool = False) -> list[Hit]:
         if self.store is None or self.embedder is None:
             raise RuntimeError("vector retrievers need a store and an embedder")
-        return self.store.search(self.embedder.embed(query), top_k=top_k)
+        return self.store.search(self.embedder.embed(query), top_k=top_k, with_vectors=with_vectors)
+
+    def _rerank(self, query: str, hits: list[Hit], top_k: int) -> list[Hit]:
+        if self.reranker is None:
+            raise RuntimeError("rerank retrievers need a reranker")
+        return self.reranker.rerank(query, hits, top_k)
 
     def _random(self, query: str, top_k: int) -> list[Hit]:
         # Seeded on the query so the floor is reproducible across runs; a
@@ -84,6 +102,26 @@ class Harness:
         if name == "hybrid_rrf":
             return lambda q, k: fusion.reciprocal_rank_fusion(
                 [self._vector(q, depth), self.bm25.search(q, depth)], top_k=k
+            )
+        # The whole point of the two-stage shape: retrieve `depth` candidates
+        # cheaply, then spend the cross-encoder only on those.
+        if name == "vector_rerank":
+            return lambda q, k: self._rerank(q, self._vector(q, depth), k)
+        if name == "hybrid_rrf_rerank":
+            return lambda q, k: self._rerank(
+                q,
+                fusion.reciprocal_rank_fusion(
+                    [self._vector(q, depth), self.bm25.search(q, depth)], top_k=depth
+                ),
+                k,
+            )
+        if name == "vector_mmr":
+            return lambda q, k: context.mmr(
+                self._vector(q, depth, with_vectors=True), self.cfg.mmr_lambda, k
+            )
+        if name == "vector_cap":
+            return lambda q, k: context.per_file_cap(
+                self._vector(q, depth), self.cfg.per_file_cap or 2, k
             )
         raise ValueError(f"unknown retriever {name!r}, expected one of {RETRIEVERS}")
 

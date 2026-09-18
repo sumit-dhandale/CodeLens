@@ -126,6 +126,9 @@ class Hit:
     start_line: int
     end_line: int
     text: str
+    # Only populated when the caller asks for it. MMR needs candidate-to-
+    # candidate similarity, which is the one thing a ranked list cannot provide.
+    vector: tuple[float, ...] = ()
 
     @classmethod
     def from_chunk(cls, chunk: Chunk, score: float) -> Hit:
@@ -303,6 +306,7 @@ class QdrantStore:
         top_k: int = 5,
         query_filter: Any = None,
         exact: bool = False,
+        with_vectors: bool = False,
     ) -> list[Hit]:
         from qdrant_client import models
 
@@ -315,11 +319,15 @@ class QdrantStore:
             # truth that Milestone 5 measures HNSW recall against.
             search_params=models.SearchParams(exact=exact),
             with_payload=True,
+            with_vectors=with_vectors,
         )
-        return [_hit(point.score, point.payload or {}) for point in response.points]
+        return [
+            _hit(point.score, point.payload or {}, point.vector if with_vectors else None)
+            for point in response.points
+        ]
 
 
-def _hit(score: float, payload: dict[str, Any]) -> Hit:
+def _hit(score: float, payload: dict[str, Any], vector: Any = None) -> Hit:
     return Hit(
         score=score,
         file_path=payload.get("file_path", ""),
@@ -330,6 +338,7 @@ def _hit(score: float, payload: dict[str, Any]) -> Hit:
         start_line=int(payload.get("start_line", 0)),
         end_line=int(payload.get("end_line", 0)),
         text=payload.get("text", ""),
+        vector=tuple(vector) if isinstance(vector, list) else (),
     )
 
 

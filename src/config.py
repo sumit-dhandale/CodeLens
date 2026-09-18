@@ -89,8 +89,11 @@ class Config:
     # retrieval
     top_k: int = 5
     rerank_top_n: int = 20
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     vector_weight: float = 0.7
     fusion: str = "rrf"
+    mmr_lambda: float = 0.7  # 1.0 = pure relevance, 0.0 = pure diversity
+    per_file_cap: int = 0  # 0 = unlimited
 
     # rag
     llm_provider: str = "ollama"
