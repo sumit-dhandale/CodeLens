@@ -57,6 +57,7 @@ IGNORE_FILES = frozenset(
 IGNORE_SUFFIXES = (".min.js", ".min.css", ".bundle.js", "_pb2.py", ".g.dart")
 
 CHUNK_STRATEGIES = ("file", "class", "function", "fixed")
+LLM_PROVIDERS = ("ollama", "openai_compatible", "extractive")
 
 
 @dataclass
@@ -97,8 +98,12 @@ class Config:
 
     # rag
     llm_provider: str = "ollama"
-    llm_model: str = "llama3.1:8b"
+    llm_model: str = "llama3.2"
     llm_base_url: str = "http://localhost:11434"
+    llm_timeout: float = 180.0  # CPU inference on a laptop is slow, not broken
+    llm_temperature: float = 0.0  # greedy: the same question must give the same answer
+    llm_api_key_env: str = "OPENAI_API_KEY"  # the name, never the key itself
+    llm_extract_blocks: int = 3  # chunks the extractive provider quotes
 
     languages: dict[str, str] = field(default_factory=lambda: dict(LANGUAGES))
 
@@ -117,6 +122,10 @@ class Config:
         if self.strategy not in CHUNK_STRATEGIES:
             raise ValueError(
                 f"unknown strategy {self.strategy!r}, expected one of {CHUNK_STRATEGIES}"
+            )
+        if self.llm_provider not in LLM_PROVIDERS:
+            raise ValueError(
+                f"unknown llm_provider {self.llm_provider!r}, expected one of {LLM_PROVIDERS}"
             )
         if self.chunk_lines < 1 or not 0 <= self.chunk_overlap < self.chunk_lines:
             raise ValueError(

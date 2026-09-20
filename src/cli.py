@@ -11,11 +11,12 @@ import time
 from pathlib import Path
 
 from .chunking import code_chunker
-from .config import Config
+from .config import LLM_PROVIDERS, Config
 from .embeddings.embedder import Embedder
 from .eval import gold as gold_mod
 from .eval import metrics, runner
 from .parser import code_parser, repo_fetcher, repository_loader
+from .rag import generator as rag_generator
 from .retrieval import context as context_mod
 from .retrieval.reranker import CrossEncoderReranker
 from .retrieval.vector_search import VectorSearcher
@@ -137,7 +138,7 @@ def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
+def _query_text(args: argparse.Namespace) -> str:
     # argparse treats a token containing a space as positional even when it
     # starts with a dash, so a quoting mistake turns "--language python" into
     # part of the query and silently returns plausible nonsense.
@@ -146,7 +147,11 @@ def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
         raise ValueError(
             f"query contains what looks like a flag: {flag.group(1)!r} - check quoting"
         )
+    return query
 
+
+def _retrieve(cfg: Config, args: argparse.Namespace, query: str):
+    """The shared search pipeline behind both `search` and `ask`."""
     searcher = VectorSearcher(cfg)
     query_filter = qdrant_store.make_filter(
         language=args.language, symbol_type=args.symbol_type, directory=args.directory
@@ -169,13 +174,18 @@ def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
         started = time.perf_counter()
         hits = CrossEncoderReranker(cfg).rerank(query, hits, cfg.top_k)
         extra += f", rerank {(time.perf_counter() - started) * 1000:.0f}ms of {len(result.hits)}"
-    hits = hits[: cfg.top_k]
+    return searcher, hits[: cfg.top_k], result, extra
 
-    expander = (
-        context_mod.ContextExpander(repository_loader.load(_resolve_checkout(cfg).path, cfg))
-        if args.expand
-        else None
-    )
+
+def _expander(cfg: Config) -> context_mod.ContextExpander:
+    return context_mod.ContextExpander(repository_loader.load(_resolve_checkout(cfg).path, cfg))
+
+
+def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
+    query = _query_text(args)
+    searcher, hits, result, extra = _retrieve(cfg, args, query)
+
+    expander = _expander(cfg) if args.expand else None
     if not hits:
         print("no results")
     for rank, hit in enumerate(hits, 1):
@@ -190,6 +200,37 @@ def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
     )
     searcher.embedder.close()
     return 0
+
+
+def cmd_ask(cfg: Config, args: argparse.Namespace) -> int:
+    query = _query_text(args)
+    searcher, hits, result, extra = _retrieve(cfg, args, query)
+
+    generator = rag_generator.Generator(cfg, expander=_expander(cfg) if args.expand else None)
+    if args.show_prompt:
+        prompt = generator.prompt(query, hits)
+        print(f"--- system ---\n{prompt.system}\n\n--- user ---\n{prompt.user}\n")
+        searcher.embedder.close()
+        return 0
+
+    answer = generator.answer(query, hits, retrieval_ms=result.total_ms)
+    print(answer.text)
+
+    print("\nsources:")
+    for rank, hit in enumerate(answer.hits, 1):
+        print(f"  [{rank}] {hit.score:.4f}  {hit.citation}  {hit.symbol_type} {hit.qualified_name}")
+
+    check = answer.citations
+    flag = "ok" if check.ok else "SUSPECT"
+    print(f"\ncitations: {flag} - {check.summary()}")
+    if answer.abstained:
+        print("model declared the context insufficient")
+    print(
+        f"{answer.provider}/{answer.model}, {answer.prompt_chars} prompt chars, "
+        f"retrieval {answer.retrieval_ms:.0f}ms{extra}, generation {answer.generation_ms:.0f}ms"
+    )
+    searcher.embedder.close()
+    return 0 if check.ok else 2
 
 
 def cmd_eval(cfg: Config, args: argparse.Namespace) -> int:
@@ -291,25 +332,43 @@ def build_parser() -> argparse.ArgumentParser:
     )
     index_cmd.set_defaults(func=cmd_index)
 
-    search_cmd = sub.add_parser("search", parents=[common], help="vector search the index")
-    search_cmd.add_argument("query", nargs="+")
-    search_cmd.add_argument("--language", help="filter: python, markdown, ...")
-    search_cmd.add_argument(
-        "--symbol-type", dest="symbol_type", help="filter: function, class, ..."
-    )
-    search_cmd.add_argument("--directory", help="filter: exact directory of the chunk's file")
-    search_cmd.add_argument(
+    # `search` and `ask` run the identical retrieval pipeline; only the last
+    # step differs, so the flags that shape retrieval live in one parent.
+    retrieval = argparse.ArgumentParser(add_help=False)
+    retrieval.add_argument("query", nargs="+")
+    retrieval.add_argument("--language", help="filter: python, markdown, ...")
+    retrieval.add_argument("--symbol-type", dest="symbol_type", help="filter: function, class, ...")
+    retrieval.add_argument("--directory", help="filter: exact directory of the chunk's file")
+    retrieval.add_argument(
         "--exact", action="store_true", help="brute-force search, the ANN recall baseline"
     )
-    search_cmd.add_argument("--snippet", type=int, default=3, help="lines of source per hit")
-    search_cmd.add_argument(
+    retrieval.add_argument(
         "--rerank", action="store_true", help=f"cross-encode the top {Config.rerank_top_n}"
     )
-    search_cmd.add_argument("--mmr", action="store_true", help="diversify with MMR")
-    search_cmd.add_argument(
-        "--expand", action="store_true", help="show imports and parent class with each hit"
+    retrieval.add_argument("--mmr", action="store_true", help="diversify with MMR")
+    retrieval.add_argument(
+        "--expand", action="store_true", help="add imports and parent class to each hit"
     )
+
+    search_cmd = sub.add_parser(
+        "search", parents=[common, retrieval], help="vector search the index"
+    )
+    search_cmd.add_argument("--snippet", type=int, default=3, help="lines of source per hit")
     search_cmd.set_defaults(func=cmd_search)
+
+    ask_cmd = sub.add_parser(
+        "ask", parents=[common, retrieval], help="retrieve, then answer with cited context"
+    )
+    ask_cmd.add_argument("--llm-provider", dest="llm_provider", choices=LLM_PROVIDERS)
+    ask_cmd.add_argument("--llm-model", dest="llm_model", help="e.g. llama3.2, gpt-4o-mini")
+    ask_cmd.add_argument("--llm-base-url", dest="llm_base_url")
+    ask_cmd.add_argument(
+        "--show-prompt",
+        dest="show_prompt",
+        action="store_true",
+        help="print the assembled prompt and exit without calling a model",
+    )
+    ask_cmd.set_defaults(func=cmd_ask)
 
     eval_cmd = sub.add_parser(
         "eval", parents=[common], help="score every retriever against the gold set"
